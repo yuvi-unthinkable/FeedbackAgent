@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VapiEventSchemasAndStateTransitions",
+  "description": "Static JavaScript and TypeScript inspection notes and JSON schema definitions extracted from @vapi-ai/web",
+  "version": "1.0.0",
+  "vapiClient": {
+    "class": "Vapi",
+    "inherits": "EventEmitter",
+    "constructor": {
+      "parameters": [
+        { "name": "publicKey", "type": "string", "required": true },
+        { "name": "apiBaseUrl", "type": "string", "required": false, "default": "https://api.vapi.ai" }
+      ]
+    },
+    "coreMethods": [
+      { "name": "start", "parameters": ["assistantId | CreateAssistantDTO | workflowId", "AssistantOverrides?"], "returns": "Promise<Call>" },
+      { "name": "stop", "parameters": [], "returns": "Promise<void>" },
+      { "name": "send", "parameters": ["VapiClientToServerMessage"], "returns": "void" },
+      { "name": "isMuted", "parameters": [], "returns": "boolean" },
+      { "name": "setMuted", "parameters": ["boolean"], "returns": "void" }
+    ]
+  },
+  "eventNames": [
+    "call-start",
+    "call-end",
+    "speech-start",
+    "speech-end",
+    "volume-level",
+    "message",
+    "error"
+  ],
+  "clientMessages": {
+    "speech-update": {
+      "type": "object",
+      "required": ["type", "status", "role"],
+      "properties": {
+        "type": { "type": "string", "enum": ["speech-update"] },
+        "status": { "type": "string", "enum": ["started", "stopped"] },
+        "role": { "type": "string", "enum": ["assistant", "user"] },
+        "turn": { "type": "integer", "description": "0-indexed turn number" },
+        "timestamp": { "type": "integer", "description": "Epoch ms" }
+      }
+    },
+    "transcript": {
+      "type": "object",
+      "required": ["type", "role", "transcriptType", "transcript"],
+      "properties": {
+        "type": { "type": "string", "enum": ["transcript", "transcript[transcriptType='final']"] },
+        "role": { "type": "string", "enum": ["assistant", "user"] },
+        "transcriptType": { "type": "string", "enum": ["partial", "final"] },
+        "transcript": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "timestamp": { "type": "integer" }
+      }
+    },
+    "function-call": {
+      "type": "object",
+      "required": ["type", "functionCall"],
+      "properties": {
+        "type": { "type": "string", "enum": ["function-call", "tool-calls"] },
+        "functionCall": {
+          "type": "object",
+          "required": ["name", "parameters"],
+          "properties": {
+            "name": { "type": "string" },
+            "parameters": { "type": "object" }
+          }
+        },
+        "toolWithToolCallList": { "type": "array" },
+        "timestamp": { "type": "integer" }
+      }
+    },
+    "user-interrupted": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["user-interrupted"] },
+        "turnId": { "type": "string" },
+        "timestamp": { "type": "integer" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "message": { "type": "string" },
+        "stage": { "type": "string" },
+        "code": { "type": ["string", "number"] },
+        "error": { "type": "object" },
+        "timestamp": { "type": "string" }
+      }
+    }
+  },
+  "stateTransitions": [
+    {
+      "from": "idle",
+      "event": "start() / call-start-progress",
+      "to": "connecting",
+      "actions": ["Acquire microphone track / setup transport", "Connect to WebRTC / WebSocket bridge"]
+    },
+    {
+      "from": "connecting",
+      "event": "call-start",
+      "to": "active",
+      "actions": ["Audio pipeline live", "Start bidirectional streaming"]
+    },
+    {
+      "from": "active",
+      "event": "speech-update (started, assistant)",
+      "to": "assistant-speaking",
+      "actions": ["Synthesize audio stream to recipient", "Emit live visual indicator"]
+    },
+    {
+      "from": "assistant-speaking",
+      "event": "user speech detected / barge-in",
+      "to": "interrupted",
+      "actions": ["Send clear frame to Twilio (<50ms)", "Abort queued assistant audio buffers", "Emit user-interrupted and speech-update (started, user)"]
+    },
+    {
+      "from": "interrupted",
+      "event": "speech-update (started, user)",
+      "to": "user-speaking",
+      "actions": ["Relay user PCM audio to Gemini Live", "Stream live user transcripts"]
+    },
+    {
+      "from": "user-speaking",
+      "event": "speech-update (stopped, user)",
+      "to": "thinking",
+      "actions": ["Gemini generates response tokens and audio"]
+    },
+    {
+      "from": "active",
+      "event": "stop() / hang / call-end",
+      "to": "ended",
+      "actions": ["Flush audio streams", "Destroy WebSockets", "Trigger asynchronous post-call report worker"]
+    }
+  ]
+}
