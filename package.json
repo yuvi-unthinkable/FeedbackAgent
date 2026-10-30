@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "Real-Time Medical Consultation Voice Agent & Doctor Dashboard (Vapi Architecture)",
   "scripts": {
+    "build": "npm --prefix backend install",
+    "start": "npm --prefix backend start",
     "test": "npm --prefix backend test",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
